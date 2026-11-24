@@ -1,0 +1,302 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  USER
+  ADMIN
+}
+
+enum Gender {
+  MALE
+  FEMALE
+  OTHER
+}
+
+enum BankCategory {
+  GOVERNMENT
+  PRIVATE
+  CHARITABLE
+  RED_CROSS
+}
+
+enum Urgency {
+  CRITICAL
+  URGENT
+  PLANNED
+}
+
+enum RequestStatus {
+  OPEN
+  FULFILLED
+  CANCELLED
+  EXPIRED
+}
+
+enum MatchStatus {
+  NOTIFIED
+  ACCEPTED
+  DECLINED
+}
+
+enum OrgRole {
+  OWNER
+  MEMBER
+}
+
+enum NoticeCategory {
+  NEWSLETTER
+  GUIDELINES
+  CHARGES
+  UPDATES
+}
+
+enum BlogCategory {
+  AWARENESS
+  NEWS
+}
+
+model User {
+  id        String   @id @default(cuid())
+  phone     String?  @unique
+  email     String?  @unique
+  name      String?
+  role      Role     @default(USER)
+  createdAt DateTime @default(now())
+
+  donor       DonorProfile?
+  requests    BloodRequest[]
+  matches     RequestMatch[]
+  memberships OrgMember[]
+}
+
+model Otp {
+  id        String   @id @default(cuid())
+  target    String
+  codeHash  String
+  attempts  Int      @default(0)
+  expiresAt DateTime
+  createdAt DateTime @default(now())
+
+  @@index([target, createdAt])
+}
+
+model DonorProfile {
+  id            String    @id @default(cuid())
+  userId        String    @unique
+  user          User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  name          String
+  dob           DateTime
+  gender        Gender
+  bloodGroup    String
+  weightKg      Int?
+  heightCm      Int?
+  state         String
+  district      String
+  lat           Float
+  lng           Float
+  contactCall     Boolean @default(true)
+  contactSms      Boolean @default(false)
+  contactWhatsapp Boolean @default(false)
+  radiusKm      Int       @default(10)
+  available     Boolean   @default(true)
+  lastDonatedAt DateTime?
+  consentAt     DateTime  @default(now())
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+
+  @@index([bloodGroup, available])
+  @@index([state, district])
+}
+
+model Organisation {
+  id        String   @id @default(cuid())
+  name      String
+  createdAt DateTime @default(now())
+
+  members OrgMember[]
+  banks   BloodBank[]
+  camps   Camp[]
+}
+
+model OrgMember {
+  id        String       @id @default(cuid())
+  orgId     String
+  org       Organisation @relation(fields: [orgId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  role      OrgRole      @default(MEMBER)
+  createdAt DateTime     @default(now())
+
+  @@unique([orgId, userId])
+}
+
+model BloodBank {
+  id             String        @id @default(cuid())
+  orgId          String?
+  org            Organisation? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+  name           String
+  category       BankCategory
+  address        String
+  state          String
+  district       String
+  pincode        String?
+  lat            Float
+  lng            Float
+  phone          String
+  email          String?
+  licenseNo      String?
+  openingHours   String?
+  website        String?
+  /// Where an imported listing came from (e.g. "osm"); null for listings added in the app.
+  source         String?
+  /// Stable id in that source, so re-running the import updates rather than duplicates.
+  externalId     String?       @unique
+  hasComponents  Boolean       @default(false)
+  verified       Boolean       @default(false)
+  active         Boolean       @default(true)
+  stockUpdatedAt DateTime      @default(now())
+  createdAt      DateTime      @default(now())
+
+  stock    Stock[]
+  requests BloodRequest[]
+
+  @@index([state, district])
+}
+
+model Stock {
+  id         String    @id @default(cuid())
+  bankId     String
+  bank       BloodBank @relation(fields: [bankId], references: [id], onDelete: Cascade)
+  bloodGroup String
+  units      Int       @default(0)
+
+  @@unique([bankId, bloodGroup])
+}
+
+model Camp {
+  id            String        @id @default(cuid())
+  orgId         String?
+  org           Organisation? @relation(fields: [orgId], references: [id], onDelete: SetNull)
+  name          String
+  address       String
+  city          String
+  state         String
+  district      String
+  lat           Float?
+  lng           Float?
+  date          DateTime
+  startTime     String
+  endTime       String
+  organisedBy   String
+  conductedBy   String
+  contactPhone  String
+  imageUrl      String?
+  expectedUnits Int?
+  verified      Boolean       @default(false)
+  active        Boolean       @default(true)
+  createdAt     DateTime      @default(now())
+
+  @@index([date])
+  @@index([state, district])
+}
+
+model CampSubscription {
+  id        String   @id @default(cuid())
+  state     String
+  district  String
+  email     String?
+  phone     String?
+  createdAt DateTime @default(now())
+}
+
+model BloodRequest {
+  id           String        @id @default(cuid())
+  requesterId  String
+  requester    User          @relation(fields: [requesterId], references: [id], onDelete: Cascade)
+  patientName  String
+  bloodGroup   String
+  units        Int
+  urgency      Urgency       @default(URGENT)
+  hospitalName String
+  bankId       String?
+  bank         BloodBank?    @relation(fields: [bankId], references: [id], onDelete: SetNull)
+  state        String
+  district     String
+  lat          Float
+  lng          Float
+  contactPhone String
+  note         String?
+  recurring    Boolean       @default(false)
+  intervalDays Int?
+  radiusKm     Int           @default(10)
+  status       RequestStatus @default(OPEN)
+  lastExpandedAt DateTime    @default(now())
+  createdAt    DateTime      @default(now())
+  expiresAt    DateTime
+
+  matches RequestMatch[]
+
+  @@index([status])
+}
+
+model RequestMatch {
+  id          String       @id @default(cuid())
+  requestId   String
+  request     BloodRequest @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  donorId     String
+  donor       User         @relation(fields: [donorId], references: [id], onDelete: Cascade)
+  distanceKm  Float
+  status      MatchStatus  @default(NOTIFIED)
+  notifiedAt  DateTime     @default(now())
+  respondedAt DateTime?
+
+  @@unique([requestId, donorId])
+  @@index([donorId, status])
+}
+
+model BlogPost {
+  id          String       @id @default(cuid())
+  slug        String       @unique
+  title       String
+  excerpt     String
+  tag         String
+  category    BlogCategory
+  coverImage  String
+  coverAlt    String
+  body        String
+  published   Boolean      @default(true)
+  publishedAt DateTime     @default(now())
+}
+
+model Notice {
+  id          String         @id @default(cuid())
+  title       String
+  category    NoticeCategory
+  fileUrl     String?
+  body        String?
+  publishedAt DateTime       @default(now())
+}
+
+model Pledge {
+  id        String   @id @default(cuid())
+  name      String
+  email     String   @unique
+  phone     String?
+  message   String?
+  createdAt DateTime @default(now())
+}
+
+model ContactMessage {
+  id        String   @id @default(cuid())
+  name      String
+  email     String
+  subject   String
+  message   String
+  createdAt DateTime @default(now())
+}
